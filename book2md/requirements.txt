@@ -1,0 +1,15 @@
+# Core
+PyMuPDF>=1.23
+Pillow>=10.0
+PyYAML>=6.0
+beautifulsoup4>=4.12
+lxml>=5.0
+EbookLib>=0.18
+mobi>=0.3
+
+# OCR engine
+rapidocr-onnxruntime>=1.4
+
+# GPU acceleration (install ONE of the following based on your setup)
+# onnxruntime-directml    # Windows with any GPU (recommended)
+# onnxruntime-gpu         # NVIDIA GPU with CUDA 12 + cuDNN 9

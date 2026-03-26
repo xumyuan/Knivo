@@ -1,0 +1,35 @@
+# book2md configuration
+# All settings are optional - defaults are built in.
+
+# Output directory (relative to where you run the command)
+output_dir: "output"
+
+# OCR settings (only used for scanned PDFs)
+ocr:
+  dpi: 200           # Image extraction DPI. Higher = clearer but slower.
+  language: "ch"     # OCR language
+
+# Chapter detection patterns for scanned PDFs (regex, checked in order)
+chapter_patterns:
+  - pattern: "第(\\d+)篇\\s*(.*)"    # Part title (level 1)
+    level: 1
+    type: "part"
+  - pattern: "第(\\d+)章\\s*(.*)"    # Chapter title (level 2)
+    level: 2
+    type: "chapter"
+
+# Page range (PDF only, null = all pages)
+page_range:
+  start: null
+  end: null
+
+# Output options
+output:
+  keep_page_markers: true    # Add <!-- page N --> comments in PDF output
+  merge_paragraphs: true     # Smart paragraph merging for OCR text
+  include_toc: true          # Generate 00_TOC.md for each book
+
+# OCR result cache (enables resume after interruption)
+cache:
+  enabled: true
+  cache_dir: ".cache"
