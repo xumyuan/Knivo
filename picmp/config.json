@@ -1,0 +1,10 @@
+{
+  "mode": "batch",
+  "label_a": "Cocos",
+  "label_b": "Unity",
+  "dir_a": "D:/workspace/ccGT",
+  "dir_b": "D:/unity_Project/u_test/cocos2unity/Assets/arts_unity/_Screenshots/Module_UI_AdventureGame",
+  "output": "AdventureGame_cmp_output",
+  "amplify_factor": 10,
+  "diff_threshold": [1, 5, 10]
+}

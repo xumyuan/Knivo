@@ -8,6 +8,7 @@ A collection of practical command-line tools for working with books, documents, 
 |---|---|
 | [book2md](book2md/) | Multi-format ebook to Markdown converter (PDF, EPUB, AZW3/MOBI) |
 | [tokenCounter](tokenCounter/) | Code repository token counter for estimating LLM context usage |
+| [picmp](picmp/) | Image quality comparison tool with metrics, diff visualization and HTML report |
 
 ## book2md
 
@@ -32,6 +33,18 @@ python tokenCounter/count_tokens.py src/ --ext py,ts   # filter by language
 ```
 
 See [tokenCounter/README.md](tokenCounter/README.md) for full documentation.
+
+## picmp
+
+Image quality comparison tool — compares single or batch image pairs, computes PSNR/SSIM/MSE and more, generates diff heatmaps and an interactive HTML report.
+
+```bash
+pip install -r picmp/requirements.txt
+python picmp/picmp.py img_a.png img_b.png              # single pair
+python picmp/picmp.py --batch dir_a/ dir_b/            # batch (recursive)
+```
+
+See [picmp/README.md](picmp/README.md) for full documentation.
 
 ## Requirements
 

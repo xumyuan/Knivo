@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0c14">
+<title>picmp - 图像质量对比报告</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0c0c14; --bg-1: #13131d; --bg-2: #1a1a26; --bg-3: #222230;
+  --border: rgba(255,255,255,0.06); --border-h: rgba(255,255,255,0.12);
+  --t1: #eeeef2; --t2: #88889a; --t3: #55556a;
+  --accent: #7b93f3; --accent-dim: rgba(123,147,243,0.10);
+  --good: #34d399; --warn: #fbbf24; --bad: #f87171;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg-0); color: var(--t1);
+  font-family: 'Inter', -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  display: flex; flex-direction: column; user-select: none;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+
+/* ===== 顶栏 ===== */
+.topbar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+  padding: 6px 16px; background: var(--bg-1); border-bottom: 1px solid var(--border);
+}
+.nav-group { display: flex; align-items: center; gap: 8px; }
+.nav-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; color: var(--t2); border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: 8px; cursor: pointer;
+  font: 500 12px/1 'Inter', sans-serif; white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.nav-btn:hover { color: var(--t1); background: var(--accent-dim); border-color: var(--border-h); }
+.nav-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-info { text-align: center; width: 200px; }
+.nav-info .counter { font: 600 13px/1.3 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+.nav-info .filename { color: var(--t3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbd-hint { color: var(--t3); font-size: 10px; white-space: nowrap; }
+.kbd-hint kbd {
+  display: inline-block; background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 4px; font: 500 9px/1.3 'Inter', sans-serif; color: var(--t2);
+}
+
+/* pill */
+.pill-group { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.pill-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.pill-label { color: var(--t3); font: 500 10px/1 'Inter', sans-serif; margin-right: 2px; }
+.pill {
+  font: 500 11px/1 'Inter', sans-serif; color: var(--t3);
+  background: transparent; border: 1px solid var(--border); border-radius: 20px;
+  padding: 4px 9px; cursor: pointer; white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.pill:hover { color: var(--t2); border-color: var(--border-h); }
+.pill.active { color: var(--t1); background: var(--accent-dim); border-color: rgba(123,147,243,0.3); }
+.pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ===== 主内容：上下两行 ===== */
+.main { flex: 1; display: flex; flex-direction: column; padding: 6px; gap: 6px; min-height: 0; }
+.row-top, .row-bot { display: grid; gap: 6px; min-height: 0; overflow: hidden; }
+.row-top { flex: 1; }
+.row-bot { flex: 1; }
+.row-bot.hidden { display: none; }
+.row-top.hidden { display: none; }
+
+/* 拖拽分割条 */
+.splitter {
+  flex-shrink: 0; height: 6px; cursor: row-resize;
+  display: flex; align-items: center; justify-content: center;
+}
+.splitter.hidden { display: none; }
+.splitter-handle {
+  width: 36px; height: 2px; border-radius: 2px;
+  background: rgba(255,255,255,0.06); transition: background 0.15s, width 0.15s;
+}
+.splitter:hover .splitter-handle, .splitter.active .splitter-handle {
+  background: var(--accent); width: 56px;
+}
+body.resizing { cursor: row-resize; }
+body.resizing img { pointer-events: none; }
+
+/* 卡片 */
+.panel {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-1); border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); transition: border-color 0.15s;
+}
+.panel:hover { border-color: var(--border-h); }
+.panel-head {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  color: var(--t2); font: 500 12px/1 'Inter', sans-serif;
+  padding: 6px 12px; flex-shrink: 0; letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border); background: var(--bg-2);
+}
+.panel-head .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.panel-head .dot-blue { background: var(--accent); }
+.panel-head .dot-green { background: var(--good); }
+.panel-head .dot-yellow { background: var(--warn); }
+.panel-body { flex: 1; min-height: 0; display: flex; padding: 4px; }
+.panel-body img {
+  width: 100%; height: 100%; object-fit: contain; cursor: pointer;
+  border-radius: 6px; transition: opacity 0.15s;
+}
+.panel-body img:hover { opacity: 0.88; }
+.panel-head[data-bs-toggle="tooltip"] {
+  cursor: help; text-decoration-line: underline; text-decoration-style: dotted;
+  text-decoration-color: rgba(255,255,255,0.15); text-underline-offset: 3px;
+}
+
+/* 指标面板 */
+.metrics-body { flex: 1; overflow-y: auto; padding: 2px 0; }
+.m-item {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 5px 14px; transition: background 0.12s;
+}
+.m-item:hover { background: var(--accent-dim); }
+.m-item .m-k {
+  color: var(--t2); font: 400 12px/1.4 'Inter', sans-serif;
+  cursor: help; text-decoration-line: underline; text-decoration-style: dotted;
+  text-decoration-color: rgba(255,255,255,0.12); text-underline-offset: 3px;
+}
+.m-item .m-v {
+  font: 700 17px/1.2 'Inter', sans-serif; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.m-v-good { color: var(--good); }
+.m-v-warn { color: var(--warn); }
+.m-v-bad  { color: var(--bad); }
+.m-v-info { color: var(--accent); }
+.m-sep { height: 1px; background: var(--border); margin: 2px 14px; }
+
+/* 全屏弹窗 */
+#fullModal .modal-content {
+  background: rgba(0,0,0,0.97); cursor: zoom-out;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+#fullModal img { max-width: 95vw; max-height: 92vh; object-fit: contain; border-radius: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="nav-group">
+    <button class="nav-btn" id="btn-prev" onclick="go(-1)" aria-label="上一组">
+      <i class="bi bi-chevron-left" aria-hidden="true"></i> 上一组
+    </button>
+    <div class="nav-info">
+      <div class="counter" id="counter">1 / 1</div>
+      <div class="filename" id="filename"></div>
+    </div>
+    <button class="nav-btn" id="btn-next" onclick="go(1)" aria-label="下一组">
+      下一组 <i class="bi bi-chevron-right" aria-hidden="true"></i>
+    </button>
+    <div class="kbd-hint"><kbd>&larr;</kbd> <kbd>&rarr;</kbd></div>
+  </div>
+
+  <div class="pill-group">
+    <span class="pill-label">上栏</span>
+    <button class="pill active" data-row="top" data-panel="card-metrics" onclick="togglePanel(this)">指标</button>
+    <button class="pill active" data-row="top" data-panel="card-a" onclick="togglePanel(this)">原图A</button>
+    <button class="pill active" data-row="top" data-panel="card-b" onclick="togglePanel(this)">原图B</button>
+    <div class="pill-sep"></div>
+    <span class="pill-label">下栏</span>
+    <button class="pill active" id="pill-bot-all" onclick="toggleBotAll(this)">全部</button>
+    <button class="pill active" data-row="bot" data-panel="card-heatmap" onclick="togglePanel(this)">热力图</button>
+    <button class="pill active" data-row="bot" data-panel="card-amplified" onclick="togglePanel(this)">放大差异</button>
+    <button class="pill active" data-row="bot" data-panel="card-ssim" onclick="togglePanel(this)">SSIM</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="row-top" id="row-top">
+    <div class="panel" id="card-metrics">
+      <div class="panel-head"><span class="dot dot-blue"></span> 对比指标</div>
+      <div class="metrics-body" id="metrics"></div>
+    </div>
+    <div class="panel" id="card-a">
+      <div class="panel-head"><span class="dot dot-green"></span> {{LABEL_A}}</div>
+      <div class="panel-body"><img id="img-a" src="" alt="原图 A" onclick="openFull(this.src)"></div>
+    </div>
+    <div class="panel" id="card-b">
+      <div class="panel-head"><span class="dot dot-green"></span> {{LABEL_B}}</div>
+      <div class="panel-body"><img id="img-b" src="" alt="原图 B" onclick="openFull(this.src)"></div>
+    </div>
+  </div>
+  <div class="splitter" id="splitter"><div class="splitter-handle"></div></div>
+  <div class="row-bot" id="row-bot">
+    <div class="panel" id="card-heatmap">
+      <div class="panel-head" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+        title="像素绝对差值的颜色编码<br>蓝色 = 差异小 &middot; 红色 = 差异大"><span class="dot dot-yellow"></span> 差异热力图</div>
+      <div class="panel-body"><img id="img-heatmap" src="" alt="差异热力图" onclick="openFull(this.src)"></div>
+    </div>
+    <div class="panel" id="card-amplified">
+      <div class="panel-head" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+        title="像素差值放大 10 倍显示<br>用于发现肉眼不可见的微小差异<br>纯黑 = 完全相同"><span class="dot dot-yellow"></span> 放大差异 (10&times;)</div>
+      <div class="panel-body"><img id="img-amplified" src="" alt="放大差异图" onclick="openFull(this.src)"></div>
+    </div>
+    <div class="panel" id="card-ssim">
+      <div class="panel-head" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true"
+        title="基于 SSIM 算法的结构差异图<br>考虑亮度、对比度和结构信息<br>越亮 = 结构差异越大"><span class="dot dot-yellow"></span> SSIM 结构差异</div>
+      <div class="panel-body"><img id="img-ssim" src="" alt="SSIM 结构差异图" onclick="openFull(this.src)"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="fullModal" tabindex="-1" aria-label="全屏查看图片">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content d-flex align-items-center justify-content-center" onclick="closeFull()">
+      <img id="overlay-img" src="" alt="全屏预览">
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const DATA = {{PAIRS_JSON}};
+let idx = 0, fullModal;
+
+/* ===== 视图切换 ===== */
+function togglePanel(btn) {
+  btn.classList.toggle("active");
+  document.getElementById(btn.dataset.panel).style.display = btn.classList.contains("active") ? "" : "none";
+  reflowRow(btn.dataset.row);
+  if (btn.dataset.row === "bot") syncBotAll();
+  syncTopAll();
+}
+
+function toggleBotAll(btn) {
+  const botPills = document.querySelectorAll('.pill[data-row="bot"]');
+  // 如果当前全部激活 → 全部关闭，否则 → 全部打开
+  const allOn = Array.from(botPills).every(function(p) { return p.classList.contains("active"); });
+  botPills.forEach(function(p) {
+    if (allOn) { p.classList.remove("active"); } else { p.classList.add("active"); }
+    document.getElementById(p.dataset.panel).style.display = p.classList.contains("active") ? "" : "none";
+  });
+  reflowRow("bot");
+  syncBotAll();
+}
+
+function syncBotAll() {
+  const botPills = document.querySelectorAll('.pill[data-row="bot"]');
+  const anyOn = Array.from(botPills).some(function(p) { return p.classList.contains("active"); });
+  const allBtn = document.getElementById("pill-bot-all");
+  if (anyOn) { allBtn.classList.add("active"); } else { allBtn.classList.remove("active"); }
+  document.getElementById("row-bot").classList.toggle("hidden", !anyOn);
+  syncSplitter();
+}
+
+function syncTopAll() {
+  const topPills = document.querySelectorAll('.pill[data-row="top"]');
+  const anyOn = Array.from(topPills).some(function(p) { return p.classList.contains("active"); });
+  document.getElementById("row-top").classList.toggle("hidden", !anyOn);
+  syncSplitter();
+}
+
+function syncSplitter() {
+  const topVisible = !document.getElementById("row-top").classList.contains("hidden");
+  const botVisible = !document.getElementById("row-bot").classList.contains("hidden");
+  document.getElementById("splitter").classList.toggle("hidden", !(topVisible && botVisible));
+}
+
+function reflowRow(row) {
+  const container = document.getElementById("row-" + row);
+  const visible = container.querySelectorAll('.panel:not([style*="display: none"])');
+  container.style.gridTemplateColumns = visible.length ? "repeat(" + visible.length + ", 1fr)" : "";
+}
+
+/* ===== 指标色值分级 ===== */
+function gradeMetric(k, v) {
+  if (v === null) return "m-v-info";
+  if (k === "PSNR (dB)") return v > 40 ? "m-v-good" : v > 30 ? "m-v-warn" : "m-v-bad";
+  if (k === "SSIM") return v > 0.99 ? "m-v-good" : v > 0.95 ? "m-v-warn" : "m-v-bad";
+  if (k === "MSE") return v < 10 ? "m-v-good" : v < 100 ? "m-v-warn" : "m-v-bad";
+  if (k === "MAE") return v < 2 ? "m-v-good" : v < 10 ? "m-v-warn" : "m-v-bad";
+  if (k.startsWith("Histogram")) return v > 0.99 ? "m-v-good" : v > 0.95 ? "m-v-warn" : "m-v-bad";
+  if (k.startsWith("Pixel Diff")) return v < 1 ? "m-v-good" : v < 5 ? "m-v-warn" : "m-v-bad";
+  return "m-v-info";
+}
+
+const TIPS = {
+  "PSNR (dB)": "Peak Signal-to-Noise Ratio\n越高越好\n>40 dB 几乎无差异\n30~40 轻微差异\n<30 差异明显",
+  "SSIM": "Structural Similarity Index\n范围 0~1，越接近 1 越好\n>0.99 极好 · >0.95 良好 · <0.9 差异大",
+  "MSE": "Mean Squared Error\n均方误差，越小越好\n0 = 完全相同",
+  "MAE": "Mean Absolute Error\n平均绝对误差，越小越好\n0 = 完全相同",
+  "Histogram Corr (B)": "Blue Channel\n直方图相关性，1 = 完全一致",
+  "Histogram Corr (G)": "Green Channel\n直方图相关性，1 = 完全一致",
+  "Histogram Corr (R)": "Red Channel\n直方图相关性，1 = 完全一致",
+};
+
+/* ===== 核心 ===== */
+document.addEventListener("DOMContentLoaded", function() {
+  fullModal = new bootstrap.Modal(document.getElementById("fullModal"));
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el, { trigger: "hover", container: "body" });
+  });
+  reflowRow("top"); reflowRow("bot");
+  show(0);
+});
+
+function openFull(src) { document.getElementById("overlay-img").src = src; fullModal.show(); }
+function closeFull() { fullModal.hide(); }
+
+function show(i) {
+  idx = i;
+  const p = DATA[i];
+  document.getElementById("counter").textContent = (i + 1) + " / " + DATA.length;
+  document.getElementById("filename").textContent = p.name;
+  document.getElementById("img-a").src = p.imgA;
+  document.getElementById("img-b").src = p.imgB;
+  document.getElementById("img-heatmap").src = p.heatmap;
+  document.getElementById("img-amplified").src = p.amplified;
+  document.getElementById("img-ssim").src = p.ssim;
+
+  const el = document.getElementById("metrics");
+  el.innerHTML = "";
+  Object.keys(p.metrics).forEach(function(k) {
+    const v = p.metrics[k];
+    const d = document.createElement("div");
+    d.className = "m-item";
+    let tip = TIPS[k] || "";
+    if (k.startsWith("Pixel Diff")) tip = "Pixel Difference %\n超过阈值的像素占比，越低越好\n0% = 完全相同";
+    const valStr = v === null ? "∞" : (typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(4)) : v);
+    const cls = gradeMetric(k, v);
+    const tipAttr = tip ? ' data-bs-toggle="tooltip" data-bs-placement="top" data-bs-html="true" title="' + tip.replace(/\n/g, "<br>") + '"' : '';
+    d.innerHTML = '<span class="m-k"' + tipAttr + '>' + k + '</span><span class="m-v ' + cls + '">' + valStr + '</span>';
+    el.appendChild(d);
+    if (k === "MAE") { const sep = document.createElement("div"); sep.className = "m-sep"; el.appendChild(sep); }
+  });
+
+  document.getElementById("btn-prev").style.display = DATA.length <= 1 ? "none" : "";
+  document.getElementById("btn-next").style.display = DATA.length <= 1 ? "none" : "";
+
+  document.querySelectorAll('.m-item [data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el, { trigger: "hover", container: "body" });
+  });
+}
+
+function go(delta) {
+  let next = idx + delta;
+  if (next < 0) next = DATA.length - 1;
+  if (next >= DATA.length) next = 0;
+  show(next);
+}
+
+document.addEventListener("keydown", function(e) {
+  if (document.getElementById("fullModal").classList.contains("show")) {
+    if (e.key === "Escape") closeFull();
+    return;
+  }
+  if (e.key === "ArrowLeft") go(-1);
+  if (e.key === "ArrowRight") go(1);
+});
+
+/* ===== 拖拽分割条 ===== */
+(function() {
+  const splitter = document.getElementById("splitter");
+  const rowTop = document.getElementById("row-top");
+  const rowBot = document.getElementById("row-bot");
+  let dragging = false, startY, startTopH, totalH;
+
+  splitter.addEventListener("mousedown", function(e) {
+    if (splitter.classList.contains("hidden")) return;
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startTopH = rowTop.offsetHeight;
+    totalH = rowTop.offsetHeight + rowBot.offsetHeight;
+    splitter.classList.add("active");
+    document.body.classList.add("resizing");
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    let newTopH = Math.max(60, Math.min(totalH - 60, startTopH + dy));
+    rowTop.style.flex = "0 0 " + newTopH + "px";
+    rowBot.style.flex = "0 0 " + (totalH - newTopH) + "px";
+  });
+
+  document.addEventListener("mouseup", function() {
+    if (dragging) {
+      dragging = false;
+      splitter.classList.remove("active");
+      document.body.classList.remove("resizing");
+    }
+  });
+
+  function initSplit() {
+    rowTop.style.flex = "1";
+    rowBot.style.flex = "1";
+  }
+  initSplit();
+  window.addEventListener("resize", initSplit);
+})();
+</script>
+</body>
+</html>
