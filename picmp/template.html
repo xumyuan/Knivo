@@ -146,6 +146,38 @@ body.resizing img { pointer-events: none; }
 }
 #fullModal img { max-width: 95vw; max-height: 92vh; object-fit: contain; border-radius: 8px; }
 
+/* ===== 像素对比 ===== */
+.img-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.img-wrap canvas.crosshair-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 2;
+}
+.img-wrap img { z-index: 1; }
+#pixel-info {
+  display: none; position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+  background: rgba(15,15,25,0.92); backdrop-filter: blur(8px);
+  border: 1px solid var(--border-h); border-radius: 10px;
+  padding: 8px 16px; z-index: 60; font: 500 12px/1.6 'Inter', monospace;
+  color: var(--t1); white-space: pre; min-width: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+#pixel-info.visible { display: block; }
+#pixel-info .px-coord { color: var(--t2); font-size: 11px; margin-bottom: 2px; }
+#pixel-info .px-row { display: flex; gap: 6px; align-items: center; }
+#pixel-info .px-label { color: var(--t2); min-width: 16px; flex-shrink: 0; font-weight: 600; }
+#pixel-info .px-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border-h); flex-shrink: 0; }
+#pixel-info .px-vals { font-variant-numeric: tabular-nums; }
+#pixel-info .px-diff { color: var(--warn); }
+
+/* 放大镜 */
+.magnifier {
+  position: absolute; width: 140px; height: 140px; border-radius: 6px;
+  border: 1px solid var(--accent); box-shadow: 0 0 12px rgba(0,0,0,0.6);
+  pointer-events: none; z-index: 10; display: none;
+  overflow: hidden; image-rendering: pixelated;
+}
+.magnifier canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
@@ -173,6 +205,7 @@ body.resizing img { pointer-events: none; }
     <button class="pill active" data-row="top" data-panel="card-metrics" onclick="togglePanel(this)">指标</button>
     <button class="pill active" data-row="top" data-panel="card-a" onclick="togglePanel(this)">原图A</button>
     <button class="pill active" data-row="top" data-panel="card-b" onclick="togglePanel(this)">原图B</button>
+    <button class="pill" id="pill-pixel" onclick="togglePixelMode(this)">像素对比</button>
     <div class="pill-sep"></div>
     <span class="pill-label">下栏</span>
     <button class="pill active" id="pill-bot-all" onclick="toggleBotAll(this)">全部</button>
@@ -190,11 +223,11 @@ body.resizing img { pointer-events: none; }
     </div>
     <div class="panel" id="card-a">
       <div class="panel-head"><span class="dot dot-green"></span> {{LABEL_A}}</div>
-      <div class="panel-body"><img id="img-a" src="" alt="原图 A" onclick="openFull(this.src)"></div>
+      <div class="panel-body"><div class="img-wrap" id="wrap-a"><img id="img-a" src="" alt="原图 A" onclick="openFull(this.src)"><canvas class="crosshair-layer" id="xhair-a"></canvas><div class="magnifier" id="mag-a"><canvas id="mag-cv-a"></canvas></div></div></div>
     </div>
     <div class="panel" id="card-b">
       <div class="panel-head"><span class="dot dot-green"></span> {{LABEL_B}}</div>
-      <div class="panel-body"><img id="img-b" src="" alt="原图 B" onclick="openFull(this.src)"></div>
+      <div class="panel-body"><div class="img-wrap" id="wrap-b"><img id="img-b" src="" alt="原图 B" onclick="openFull(this.src)"><canvas class="crosshair-layer" id="xhair-b"></canvas><div class="magnifier" id="mag-b"><canvas id="mag-cv-b"></canvas></div></div></div>
     </div>
   </div>
   <div class="splitter" id="splitter"><div class="splitter-handle"></div></div>
@@ -215,6 +248,13 @@ body.resizing img { pointer-events: none; }
       <div class="panel-body"><img id="img-ssim" src="" alt="SSIM 结构差异图" onclick="openFull(this.src)"></div>
     </div>
   </div>
+</div>
+
+<div id="pixel-info">
+  <div class="px-coord" id="px-coord"></div>
+  <div class="px-row"><span class="px-label" id="px-la">A</span><span class="px-swatch" id="px-sw-a"></span><span class="px-vals" id="px-v-a"></span></div>
+  <div class="px-row"><span class="px-label" id="px-lb">B</span><span class="px-swatch" id="px-sw-b"></span><span class="px-vals" id="px-v-b"></span></div>
+  <div class="px-row px-diff"><span class="px-label">&Delta;</span><span class="px-swatch" style="visibility:hidden"></span><span class="px-vals" id="px-v-d"></span></div>
 </div>
 
 <div class="modal fade" id="fullModal" tabindex="-1" aria-label="全屏查看图片">
@@ -321,6 +361,11 @@ function show(i) {
   document.getElementById("filename").textContent = p.name;
   document.getElementById("img-a").src = p.imgA;
   document.getElementById("img-b").src = p.imgB;
+  // 更新像素对比浮层的标签
+  var headA = document.querySelector("#card-a .panel-head").textContent.trim();
+  var headB = document.querySelector("#card-b .panel-head").textContent.trim();
+  document.getElementById("px-la").textContent = headA;
+  document.getElementById("px-lb").textContent = headB;
   document.getElementById("img-heatmap").src = p.heatmap;
   document.getElementById("img-amplified").src = p.amplified;
   document.getElementById("img-ssim").src = p.ssim;
@@ -347,6 +392,13 @@ function show(i) {
   document.querySelectorAll('.m-item [data-bs-toggle="tooltip"]').forEach(function(el) {
     new bootstrap.Tooltip(el, { trigger: "hover", container: "body" });
   });
+
+  // 切换图片后重新缓存像素数据
+  if (pixelMode) {
+    var imgA = document.getElementById("img-a"), imgB = document.getElementById("img-b");
+    imgA.onload = function() { cachePixelData(); };
+    imgB.onload = function() { cachePixelData(); };
+  }
 }
 
 function go(delta) {
@@ -361,9 +413,212 @@ document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") closeFull();
     return;
   }
+  if (e.key === "Escape" && pixelMode) {
+    togglePixelMode(document.getElementById("pill-pixel"));
+    return;
+  }
   if (e.key === "ArrowLeft") go(-1);
   if (e.key === "ArrowRight") go(1);
 });
+
+/* ===== 像素对比模式 ===== */
+let pixelMode = false;
+let savedPanelState = null; // 保存进入像素模式前的面板状态
+const cvA = document.createElement("canvas"), ctxA = cvA.getContext("2d", { willReadFrequently: true });
+const cvB = document.createElement("canvas"), ctxB = cvB.getContext("2d", { willReadFrequently: true });
+
+function togglePixelMode(btn) {
+  pixelMode = !pixelMode;
+  btn.classList.toggle("active", pixelMode);
+  document.getElementById("pixel-info").classList.remove("visible");
+  clearCrosshairs();
+
+  if (pixelMode) {
+    // 保存当前所有 pill 的状态
+    savedPanelState = {};
+    document.querySelectorAll('.pill[data-panel]').forEach(function(p) {
+      savedPanelState[p.dataset.panel] = p.classList.contains("active");
+    });
+    savedPanelState["bot-all"] = document.getElementById("pill-bot-all").classList.contains("active");
+
+    // 只显示原图A和原图B，隐藏其他
+    document.querySelectorAll('.pill[data-panel]').forEach(function(p) {
+      var shouldOn = (p.dataset.panel === "card-a" || p.dataset.panel === "card-b");
+      if (shouldOn) { p.classList.add("active"); } else { p.classList.remove("active"); }
+      document.getElementById(p.dataset.panel).style.display = shouldOn ? "" : "none";
+    });
+    reflowRow("top"); reflowRow("bot");
+    syncBotAll(); syncTopAll();
+    cachePixelData();
+  } else {
+    // 恢复之前的面板状态
+    if (savedPanelState) {
+      document.querySelectorAll('.pill[data-panel]').forEach(function(p) {
+        var wasOn = savedPanelState[p.dataset.panel];
+        if (wasOn) { p.classList.add("active"); } else { p.classList.remove("active"); }
+        document.getElementById(p.dataset.panel).style.display = wasOn ? "" : "none";
+      });
+      if (savedPanelState["bot-all"]) {
+        document.getElementById("pill-bot-all").classList.add("active");
+      }
+      reflowRow("top"); reflowRow("bot");
+      syncBotAll(); syncTopAll();
+      savedPanelState = null;
+    }
+  }
+}
+
+function cachePixelData() {
+  /* 将当前两张原图绘制到隐藏 canvas 以读取像素 */
+  const imgA = document.getElementById("img-a");
+  const imgB = document.getElementById("img-b");
+  function drawWhenReady(img, cv, ctx) {
+    if (!img.naturalWidth) return;
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    ctx.drawImage(img, 0, 0);
+  }
+  drawWhenReady(imgA, cvA, ctxA);
+  drawWhenReady(imgB, cvB, ctxB);
+}
+
+/* 坐标转换：鼠标位置 → 原图像素坐标（处理 object-fit: contain） */
+function mouseToPixel(e, img) {
+  const rect = img.getBoundingClientRect();
+  const natW = img.naturalWidth, natH = img.naturalHeight;
+  if (!natW || !natH) return null;
+  const scale = Math.min(rect.width / natW, rect.height / natH);
+  const rendW = natW * scale, rendH = natH * scale;
+  const offX = (rect.width - rendW) / 2, offY = (rect.height - rendH) / 2;
+  const px = (e.clientX - rect.left - offX) / scale;
+  const py = (e.clientY - rect.top - offY) / scale;
+  if (px < 0 || py < 0 || px >= natW || py >= natH) return null;
+  return { x: Math.floor(px), y: Math.floor(py) };
+}
+
+function drawCrosshair(canvasId, wrapId, x, y) {
+  const wrap = document.getElementById(wrapId);
+  const canvas = document.getElementById(canvasId);
+  const img = wrap.querySelector("img");
+  const rect = img.getBoundingClientRect();
+  const wRect = wrap.getBoundingClientRect();
+  canvas.width = wRect.width; canvas.height = wRect.height;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const natW = img.naturalWidth, natH = img.naturalHeight;
+  const scale = Math.min(rect.width / natW, rect.height / natH);
+  const rendW = natW * scale, rendH = natH * scale;
+  const offX = (rect.width - rendW) / 2 + (rect.left - wRect.left);
+  const offY = (rect.height - rendH) / 2 + (rect.top - wRect.top);
+  const sx = offX + (x + 0.5) * scale;
+  const sy = offY + (y + 0.5) * scale;
+  ctx.strokeStyle = "rgba(123,147,243,0.7)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(sx, offY); ctx.lineTo(sx, offY + rendH);
+  ctx.moveTo(offX, sy); ctx.lineTo(offX + rendW, sy);
+  ctx.stroke();
+}
+
+function clearCrosshairs() {
+  ["xhair-a", "xhair-b"].forEach(function(id) {
+    const c = document.getElementById(id);
+    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+  });
+  document.getElementById("mag-a").style.display = "none";
+  document.getElementById("mag-b").style.display = "none";
+}
+
+var MAG_ZOOM = 8;   // 放大倍数
+var MAG_RADIUS = 60; // 放大镜半径 px
+
+function drawMagnifier(magId, magCvId, srcCtx, imgEl, wrapId, px, py) {
+  const mag = document.getElementById(magId);
+  const magCv = document.getElementById(magCvId);
+  const wrap = document.getElementById(wrapId);
+  const img = imgEl;
+  const rect = img.getBoundingClientRect();
+  const wRect = wrap.getBoundingClientRect();
+  const natW = img.naturalWidth, natH = img.naturalHeight;
+  if (!natW) { mag.style.display = "none"; return; }
+  const scale = Math.min(rect.width / natW, rect.height / natH);
+  const offX = (rect.width - natW * scale) / 2 + (rect.left - wRect.left);
+  const offY = (rect.height - natH * scale) / 2 + (rect.top - wRect.top);
+  // 放大镜在图上的屏幕坐标
+  const sx = offX + (px + 0.5) * scale;
+  const sy = offY + (py + 0.5) * scale;
+  // 定位放大镜（偏移到右上方避免遮挡鼠标）
+  var magX = sx + 20, magY = sy - MAG_RADIUS * 2 - 10;
+  if (magY < 0) magY = sy + 20;
+  if (magX + MAG_RADIUS * 2 > wRect.width) magX = sx - MAG_RADIUS * 2 - 20;
+  mag.style.left = magX + "px";
+  mag.style.top = magY + "px";
+  mag.style.display = "block";
+  // 绘制放大区域
+  var sampleR = Math.floor(MAG_RADIUS / MAG_ZOOM);
+  var srcX = px - sampleR, srcY = py - sampleR, srcW = sampleR * 2 + 1, srcH = sampleR * 2 + 1;
+  magCv.width = MAG_RADIUS * 2; magCv.height = MAG_RADIUS * 2;
+  var mctx = magCv.getContext("2d");
+  mctx.imageSmoothingEnabled = false;
+  // 先填黑（越界区域）
+  mctx.fillStyle = "#000";
+  mctx.fillRect(0, 0, magCv.width, magCv.height);
+  // 从缓存 canvas 取像素块，放大绘制
+  var drawSrcX = Math.max(0, srcX), drawSrcY = Math.max(0, srcY);
+  var drawW = Math.min(srcW, natW - drawSrcX), drawH = Math.min(srcH, natH - drawSrcY);
+  if (drawW > 0 && drawH > 0) {
+    var destX = (drawSrcX - srcX) * MAG_ZOOM;
+    var destY = (drawSrcY - srcY) * MAG_ZOOM;
+    mctx.drawImage(srcCtx.canvas, drawSrcX, drawSrcY, drawW, drawH, destX, destY, drawW * MAG_ZOOM, drawH * MAG_ZOOM);
+  }
+  // 画中心十字
+  mctx.strokeStyle = "rgba(255,255,255,0.5)";
+  mctx.lineWidth = 1;
+  var cx = MAG_RADIUS, cy = MAG_RADIUS;
+  mctx.beginPath();
+  mctx.moveTo(cx - 6, cy); mctx.lineTo(cx + 6, cy);
+  mctx.moveTo(cx, cy - 6); mctx.lineTo(cx, cy + 6);
+  mctx.stroke();
+}
+
+function getPixel(ctx, x, y) {
+  try {
+    const d = ctx.getImageData(x, y, 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  } catch(e) { return { r: 0, g: 0, b: 0, a: 0 }; }
+}
+
+function fmtPx(p) { return "R:" + p.r + " G:" + p.g + " B:" + p.b + " A:" + p.a; }
+
+function onPixelMove(e, which) {
+  if (!pixelMode) return;
+  const img = document.getElementById("img-" + which);
+  const pt = mouseToPixel(e, img);
+  if (!pt) { document.getElementById("pixel-info").classList.remove("visible"); clearCrosshairs(); return; }
+  const pa = getPixel(ctxA, pt.x, pt.y);
+  const pb = getPixel(ctxB, pt.x, pt.y);
+  document.getElementById("px-coord").textContent = "(" + pt.x + ", " + pt.y + ")";
+  document.getElementById("px-v-a").textContent = fmtPx(pa);
+  document.getElementById("px-v-b").textContent = fmtPx(pb);
+  document.getElementById("px-v-d").textContent = "R:" + Math.abs(pa.r-pb.r) + " G:" + Math.abs(pa.g-pb.g) + " B:" + Math.abs(pa.b-pb.b) + " A:" + Math.abs(pa.a-pb.a);
+  document.getElementById("px-sw-a").style.background = "rgb(" + pa.r + "," + pa.g + "," + pa.b + ")";
+  document.getElementById("px-sw-b").style.background = "rgb(" + pb.r + "," + pb.g + "," + pb.b + ")";
+  document.getElementById("pixel-info").classList.add("visible");
+  drawCrosshair("xhair-a", "wrap-a", pt.x, pt.y);
+  drawCrosshair("xhair-b", "wrap-b", pt.x, pt.y);
+  drawMagnifier("mag-a", "mag-cv-a", ctxA, document.getElementById("img-a"), "wrap-a", pt.x, pt.y);
+  drawMagnifier("mag-b", "mag-cv-b", ctxB, document.getElementById("img-b"), "wrap-b", pt.x, pt.y);
+}
+
+function onPixelLeave() {
+  document.getElementById("pixel-info").classList.remove("visible");
+  clearCrosshairs();
+}
+
+/* 绑定事件到两张原图 */
+document.getElementById("wrap-a").addEventListener("mousemove", function(e) { onPixelMove(e, "a"); });
+document.getElementById("wrap-b").addEventListener("mousemove", function(e) { onPixelMove(e, "b"); });
+document.getElementById("wrap-a").addEventListener("mouseleave", onPixelLeave);
+document.getElementById("wrap-b").addEventListener("mouseleave", onPixelLeave);
 
 /* ===== 拖拽分割条 ===== */
 (function() {
