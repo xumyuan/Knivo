@@ -3,14 +3,17 @@
 count_tokens.py — 统计代码仓库的 token 数量
 
 用法:
-    python count_tokens.py [目录路径] [选项]
+    python count_tokens.py [目录路径 ...] [选项]
 
 选项:
     --model     指定 tokenizer 模型（默认 cl100k_base，兼容 GPT-4/Claude 估算）
     --top       显示 token 最多的前 N 个文件（默认 10）
     --ext       按语言或扩展名过滤，逗号分隔，如 --ext cpp,py,json
                 支持语言别名：cpp → .cpp/.cc/.cxx/.hpp, py → .py/.pyw 等
+                shader → 所有 GLSL/HLSL/UE Shader 文件
     --exclude   排除指定目录，逗号分隔，如 --exclude tests,third_party,build
+    --group     将多种语言归组显示，格式 "组名:语言1,语言2,..."
+                如 --group "Shader:GLSL,HLSL,UE Shader"
     --no-ignore 不忽略 .gitignore 规则
 
 依赖:
@@ -20,6 +23,7 @@ count_tokens.py — 统计代码仓库的 token 数量
 import os
 import sys
 import argparse
+import unicodedata
 from pathlib import Path
 from collections import defaultdict
 
@@ -94,6 +98,14 @@ EXT_LANG = {
     ".r": "R", ".R": "R",
     ".dart": "Dart",
     ".vim": "Vim",
+    # GLSL
+    ".glsl": "GLSL", ".vert": "GLSL", ".frag": "GLSL",
+    ".geom": "GLSL", ".tesc": "GLSL", ".tese": "GLSL", ".comp": "GLSL",
+    ".glslv": "GLSL", ".glslf": "GLSL",
+    # HLSL
+    ".hlsl": "HLSL", ".hlsli": "HLSL", ".fx": "HLSL", ".fxh": "HLSL",
+    # UE Shader (Unreal Engine 自定义 shader 格式)
+    ".usf": "UE Shader", ".ush": "UE Shader",
 }
 
 # 语言别名 → 扩展名集合（从 EXT_LANG 反向生成 + 手动别名）
@@ -128,6 +140,14 @@ LANG_ALIASES.update({
     "gql":        LANG_ALIASES["graphql"],
     "tf":         LANG_ALIASES["terraform"],
     "ex":         LANG_ALIASES["elixir"],
+    # Shader 别名
+    "glsl":       LANG_ALIASES["glsl"],
+    "hlsl":       LANG_ALIASES["hlsl"],
+    "ue-shader":  LANG_ALIASES["ue shader"],
+    "ueshader":   LANG_ALIASES["ue shader"],
+    "usf":        LANG_ALIASES["ue shader"],
+    "ush":        LANG_ALIASES["ue shader"],
+    "shader":     LANG_ALIASES["glsl"] | LANG_ALIASES["hlsl"] | LANG_ALIASES["ue shader"],
 })
 
 
@@ -256,6 +276,25 @@ def bar(frac: float, width: int = 20) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def str_width(s: str) -> int:
+    """计算字符串在等宽终端中的显示宽度（全角字符占 2 列）"""
+    w = 0
+    for ch in s:
+        eaw = unicodedata.east_asian_width(ch)
+        w += 2 if eaw in ("F", "W") else 1
+    return w
+
+
+def pad_right(s: str, width: int) -> str:
+    """右填充空格，使终端显示宽度恰好为 width"""
+    return s + " " * max(0, width - str_width(s))
+
+
+def pad_left(s: str, width: int) -> str:
+    """左填充空格，使终端显示宽度恰好为 width"""
+    return " " * max(0, width - str_width(s)) + s
+
+
 # ── 主函数 ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -263,7 +302,7 @@ def main():
         description="统计代码仓库的 token 数量",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("path", nargs="?", default=".", help="仓库根目录（默认当前目录）")
+    parser.add_argument("path", nargs="*", default=["."], help="仓库根目录（支持多个，默认当前目录）")
     parser.add_argument("--model", default="cl100k_base",
                         help="tiktoken 模型名（默认 cl100k_base）")
     parser.add_argument("--top", type=int, default=10,
@@ -272,14 +311,21 @@ def main():
                         help="按语言或扩展名过滤，逗号分隔，如 cpp,py,json（cpp 自动包含 .cpp/.cc/.cxx/.hpp）")
     parser.add_argument("--exclude", default=None,
                         help="排除指定目录，逗号分隔，如 tests,third_party,build")
+    parser.add_argument("--group", nargs="*", default=None,
+                        help='将多种语言归组显示，格式 "组名:语言1,语言2,..." 如 --group "Shader:GLSL,HLSL,UE Shader"')
     parser.add_argument("--no-ignore", action="store_true",
                         help="不使用 .gitignore 过滤")
     args = parser.parse_args()
 
-    root = Path(args.path).resolve()
-    if not root.is_dir():
-        print(f"错误：路径不存在或不是目录：{root}")
-        sys.exit(1)
+    # 解析并验证所有路径
+    roots: list[Path] = []
+    for p in args.path:
+        r = Path(p).resolve()
+        if not r.is_dir():
+            print(f"错误：路径不存在或不是目录：{r}")
+            sys.exit(1)
+        roots.append(r)
+    multi_root = len(roots) > 1
 
     exts_filter = None
     if args.ext:
@@ -289,16 +335,34 @@ def main():
     if args.exclude:
         exclude_dirs = {d.strip() for d in args.exclude.split(",")}
 
+    # 解析 --group 参数，构建 lang_to_group 映射
+    lang_to_group: dict[str, str] = {}
+    if args.group:
+        for g in args.group:
+            if ":" not in g:
+                print(f"错误：--group 格式不正确（缺少 ':'）：{g}")
+                sys.exit(1)
+            group_name, langs_str = g.split(":", 1)
+            group_name = group_name.strip()
+            for lang_name in langs_str.split(","):
+                lang_name = lang_name.strip()
+                if lang_name:
+                    lang_to_group[lang_name] = group_name
+
     encode_fn, model_name = make_encoder(args.model)
     if not TIKTOKEN_AVAILABLE:
         print("⚠️  未找到 tiktoken，使用字符估算（安装：pip install tiktoken）\n")
 
-    print(f"📂 仓库路径 : {root}")
+    paths_display = ", ".join(str(r) for r in roots)
+    print(f"📂 仓库路径 : {paths_display}")
     print(f"🔤 Tokenizer: {model_name}")
     if exts_filter:
         print(f"📎 统计扩展名: {', '.join(sorted(exts_filter))}")
     if exclude_dirs:
         print(f"🚫 排除目录 : {', '.join(sorted(exclude_dirs))}")
+    if lang_to_group:
+        groups_display = "; ".join(f"{v}←{k}" for k, v in lang_to_group.items())
+        print(f"📦 语言分组 : {groups_display}")
     print(f"{'─' * 60}")
 
     # 统计
@@ -313,32 +377,41 @@ def main():
     total_files = 0
     skipped = 0
 
-    for fpath in iter_files(root, exts_filter, not args.no_ignore, exclude_dirs):
-        try:
-            text = fpath.read_text(errors="replace")
-        except Exception:
-            skipped += 1
-            continue
+    for root in roots:
+        for fpath in iter_files(root, exts_filter, not args.no_ignore, exclude_dirs):
+            try:
+                text = fpath.read_text(errors="replace")
+            except Exception:
+                skipped += 1
+                continue
 
-        lines = text.count("\n") + 1
-        tokens = count_tokens(text, encode_fn)
-        size = fpath.stat().st_size
-        rel = fpath.relative_to(root)
-        lang = EXT_LANG.get(fpath.suffix.lower(), fpath.suffix or "other")
+            lines = text.count("\n") + 1
+            tokens = count_tokens(text, encode_fn)
+            size = fpath.stat().st_size
 
-        file_stats.append((tokens, lines, size, rel))
-        lang_tokens[lang] += tokens
-        lang_lines[lang] += lines
-        lang_size[lang] += size
-        lang_files[lang] += 1
-        total_tokens += tokens
-        total_lines += lines
-        total_size += size
-        total_files += 1
+            # 多目录时以目录名为前缀区分
+            if multi_root:
+                rel = Path(root.name) / fpath.relative_to(root)
+            else:
+                rel = fpath.relative_to(root)
 
-        # 进度提示（每 200 文件一次）
-        if total_files % 200 == 0:
-            print(f"  已扫描 {total_files} 个文件…", end="\r")
+            lang = EXT_LANG.get(fpath.suffix.lower(), fpath.suffix or "other")
+            # 应用语言分组
+            display_lang = lang_to_group.get(lang, lang)
+
+            file_stats.append((tokens, lines, size, rel))
+            lang_tokens[display_lang] += tokens
+            lang_lines[display_lang] += lines
+            lang_size[display_lang] += size
+            lang_files[display_lang] += 1
+            total_tokens += tokens
+            total_lines += lines
+            total_size += size
+            total_files += 1
+
+            # 进度提示（每 200 文件一次）
+            if total_files % 200 == 0:
+                print(f"  已扫描 {total_files} 个文件…", end="\r")
 
     print(" " * 50, end="\r")  # 清除进度行
 
@@ -357,23 +430,39 @@ def main():
     print(f"{'═' * 60}")
 
     # ── 按语言汇总 ──
-    print(f"\n{'─' * 84}")
-    print(f"  {'语言':<18} {'文件数':>6}  {'行数':>10}  {'大小':>10}  {'Token 数':>10}  {'占比'}")
-    print(f"{'─' * 84}")
+    col_lang = 16   # 语言列的显示宽度
+    header = (f"  {pad_right('语言', col_lang)}"
+              f"  {pad_left('文件数', 6)}"
+              f"  {pad_left('行数', 10)}"
+              f"  {pad_left('大小', 10)}"
+              f"  {pad_left('Token 数', 10)}"
+              f"  {'占比'}")
+    rule_width = str_width(header) + 22  # 加上进度条宽度
+    print(f"\n{'─' * rule_width}")
+    print(header)
+    print(f"{'─' * rule_width}")
     for lang, tok in sorted(lang_tokens.items(), key=lambda x: -x[1]):
         pct = tok / total_tokens
-        print(f"  {lang:<18} {lang_files[lang]:>6}  {human(lang_lines[lang]):>10}  "
-              f"{human_size(lang_size[lang]):>10}  {human(tok):>10}  {bar(pct)} {pct*100:5.1f}%")
+        print(f"  {pad_right(lang, col_lang)}"
+              f"  {lang_files[lang]:>6}"
+              f"  {human(lang_lines[lang]):>10}"
+              f"  {human_size(lang_size[lang]):>10}"
+              f"  {human(tok):>10}"
+              f"  {bar(pct)} {pct*100:5.1f}%")
 
     # ── Top N 文件 ──
     file_stats.sort(reverse=True)
     top_n = min(args.top, len(file_stats))
-    print(f"\n{'─' * 84}")
+    print(f"\n{'─' * rule_width}")
     print(f"  Token 最多的 {top_n} 个文件")
-    print(f"{'─' * 84}")
+    print(f"{'─' * rule_width}")
     for i, (tok, lines, size, rel) in enumerate(file_stats[:top_n], 1):
         pct = tok / total_tokens
-        print(f"  {i:>2}. {str(rel):<40}  {human_size(size):>8}  {human(lines):>6} lines  {human(tok):>7} tokens  ({pct*100:.1f}%)")
+        print(f"  {i:>2}. {pad_right(str(rel), 40)}"
+              f"  {human_size(size):>8}"
+              f"  {human(lines):>6} lines"
+              f"  {human(tok):>7} tokens"
+              f"  ({pct*100:.1f}%)")
 
     print(f"\n✅ 扫描完成\n")
 
