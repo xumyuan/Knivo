@@ -7,23 +7,26 @@ Each book is converted into a folder of per-chapter Markdown files with an auto-
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1. Install as global command (from Knivo root)
+pip install -e .
+
+# 2. Install dependencies
 pip install -r book2md/requirements.txt
 
-# 2. (Recommended) Install GPU acceleration for scanned PDF OCR
+# 3. (Recommended) Install GPU acceleration for scanned PDF OCR
 pip install onnxruntime-directml     # Windows, any GPU
 # or
 pip install onnxruntime-gpu          # Linux/Windows, NVIDIA CUDA
 
-# 3. Run
-python -m book2md inputs/            # convert all books in a folder
-python -m book2md book.epub          # convert a single file
+# 4. Run
+book2md inputs/            # batch convert a folder
+book2md book.epub          # convert a single file
 ```
 
 ## Usage
 
 ```
-python -m book2md [OPTIONS] <path>
+book2md [OPTIONS] <path>
 ```
 
 | Option | Description |
@@ -41,22 +44,22 @@ python -m book2md [OPTIONS] <path>
 
 ```bash
 # Batch convert everything in inputs/
-python -m book2md inputs/
+book2md inputs/
 
 # Single EPUB
-python -m book2md "my book.epub"
+book2md "my book.epub"
 
 # Scanned PDF with higher resolution OCR
-python -m book2md textbook.pdf --dpi 300
+book2md textbook.pdf --dpi 300
 
 # Only pages 100-200 of a PDF
-python -m book2md textbook.pdf --pages 100-200
+book2md textbook.pdf --pages 100-200
 
 # Custom output directory
-python -m book2md inputs/ -o markdown_output/
+book2md inputs/ -o markdown_output/
 
 # Re-OCR without cache
-python -m book2md textbook.pdf --no-cache
+book2md textbook.pdf --no-cache
 ```
 
 ## Supported Formats

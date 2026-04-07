@@ -5,43 +5,54 @@ Code repository token counter. Scans a codebase and reports token usage by file 
 ## Quick Start
 
 ```bash
-# 1. Install dependency
-pip install tiktoken
+# Install as global command (from Knivo root)
+pip install -e .
 
-# 2. Run
-python tokenCounter/count_tokens.py .                # current directory
-python tokenCounter/count_tokens.py /path/to/repo     # specific repo
+# Run
+tokens .                    # current directory
+tokens /path/to/repo        # specific repo
+tokens dir1 dir2            # multiple directories
 ```
 
 ## Usage
 
 ```
-python tokenCounter/count_tokens.py [OPTIONS] <path>
+tokens [path ...] [OPTIONS]
 ```
 
 | Option | Description |
 |---|---|
-| `path` | Repository root directory (default: `.`) |
+| `path ...` | One or more repository directories (default: `.`) |
 | `--model NAME` | Tokenizer model (default: `cl100k_base`, compatible with GPT-4 / Claude) |
 | `--top N` | Show top N files by token count (default: 10) |
 | `--ext EXTS` | Filter by language or extension, comma-separated (e.g. `cpp,py,json`) |
 | `--exclude DIRS` | Exclude directories, comma-separated (e.g. `tests,third_party,build`) |
+| `--group GROUPS` | Group languages for display (e.g. `"Shader:GLSL,HLSL,UE Shader"`) |
 | `--no-ignore` | Don't apply `.gitignore` rules |
 
 ### Examples
 
 ```bash
 # Count tokens for a Python + JS project
-python tokenCounter/count_tokens.py myproject/ --ext py,js
+tokens myproject/ --ext py,js
 
 # Show top 20 largest files
-python tokenCounter/count_tokens.py . --top 20
+tokens . --top 20
 
 # Exclude test and build directories
-python tokenCounter/count_tokens.py . --exclude tests,build,dist
+tokens . --exclude tests,build,dist
 
 # Count everything (ignore .gitignore)
-python tokenCounter/count_tokens.py . --no-ignore
+tokens . --no-ignore
+
+# Scan multiple directories at once
+tokens engine/src game/src plugins/
+
+# Filter all shader files (GLSL + HLSL + UE Shader)
+tokens /ue-project --ext shader
+
+# Group languages into a single row
+tokens . --group "Shader:GLSL,HLSL,UE Shader" "Web:HTML,CSS,JavaScript"
 ```
 
 ## Language Support
@@ -57,8 +68,32 @@ The `--ext` flag supports language aliases that expand to all relevant extension
 | `sh` | `.sh`, `.bash`, `.zsh` |
 | `css` | `.css`, `.scss`, `.sass`, `.less` |
 | `md` | `.md`, `.mdx` |
+| `glsl` | `.glsl`, `.vert`, `.frag`, `.geom`, `.tesc`, `.tese`, `.comp`, `.glslv`, `.glslf` |
+| `hlsl` | `.hlsl`, `.hlsli`, `.fx`, `.fxh` |
+| `ue-shader` / `usf` / `ush` | `.usf`, `.ush` |
+| `shader` | All GLSL + HLSL + UE Shader extensions |
 
 And many more (Go, Rust, Java, Kotlin, Swift, C#, Ruby, PHP, SQL, Terraform, etc.)
+
+## Composite Directories
+
+Pass multiple paths to scan them all in one report:
+
+```bash
+tokens engine/shaders game/shaders
+```
+
+When multiple directories are given, file paths in the output are prefixed with the directory name to distinguish their origin.
+
+## Language Grouping
+
+Use `--group` to merge multiple languages into one row in the summary table:
+
+```bash
+tokens . --group "Shader:GLSL,HLSL,UE Shader"
+```
+
+Format: `"GroupName:Lang1,Lang2,..."` — language names must match the labels in the summary (e.g. `GLSL`, `C++`, `Python`).
 
 ## Output
 

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knivo"
+version = "1.0.0"
+description = "A collection of practical CLI tools: book2md, tokens, picmp"
+requires-python = ">=3.10"
+
+[project.scripts]
+tokens  = "tokenCounter.count_tokens:main"
+picmp   = "picmp.picmp:main"
+book2md = "book2md.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["book2md*", "tokenCounter*", "picmp*"]

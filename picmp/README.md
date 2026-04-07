@@ -14,24 +14,27 @@
 ## 快速开始
 
 ```bash
+# 安装为全局命令（在 Knivo 根目录）
+pip install -e .
+
 # 安装依赖
 pip install -r requirements.txt
 
-# 编辑配置文件
-# config.json
-
-# 双击运行（Windows）
-run.bat
+# 使用
+picmp img_a.png img_b.png
+picmp --batch dir_a/ dir_b/
 ```
 
 ## 用法
 
 ```bash
-# 使用 config.json 配置（推荐）
-python picmp.py
+# 使用全局命令（推荐，安装后任意目录可用）
+picmp
+picmp img_a.png img_b.png
+picmp --batch dir_a/ dir_b/
 
-# 单张对比
-python picmp.py img_a.png img_b.png
+# 或直接运行脚本
+python picmp.py
 
 # 指定输出目录
 python picmp.py img_a.png img_b.png -o results/
